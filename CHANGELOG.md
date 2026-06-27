@@ -9,6 +9,12 @@ release.
 
 ## [Unreleased]
 
+### Changed
+
+- Relicensed the project from GPL-3.0 to the MIT License.
+- Reworked `README.md`: status badges, quick-start, an operations table, and
+  tightened reference sections.
+
 ## [0.0.1] - 2026-06-27
 
 First release of `nocodb-migrate` — a command-line migration tool for NocoDB,
