@@ -20,6 +20,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -27,9 +28,29 @@ import (
 // expose the Meta API v3 endpoints the tool calls.
 const NocoDBImage = "nocodb/nocodb:2026.06.1"
 
+// Container images for the external SQL backends.
+const (
+	mySQLImage    = "mysql:8"
+	postgresImage = "postgres:16"
+)
+
 const (
 	bootstrapEmail    = "admin@migrator.local"
 	bootstrapPassword = "Password123!"
+	// dbPassword is the root/superuser password for the external DB backends.
+	// Kept alphanumeric so it needs no escaping inside the NC_DB URL.
+	dbPassword = "ncpass1234"
+)
+
+// Backend selects the storage NocoDB runs on. SQLite is the bundled store (a
+// single container); MySQL and Postgres are external SQL sources, each started
+// as a second container on a shared network and wired via NC_DB.
+type Backend string
+
+const (
+	SQLite   Backend = "sqlite"
+	MySQL    Backend = "mysql"
+	Postgres Backend = "postgres"
 )
 
 // NocoDB is a running NocoDB container plus the credentials a test feeds to the
@@ -42,14 +63,23 @@ type NocoDB struct {
 	container testcontainers.Container
 }
 
-// StartNocoDB brings up a fresh NocoDB, waits for it to be ready, and bootstraps
-// a super-admin, an API token, and an empty base. It skips the test when Docker
-// is not available so a tagged run on a Docker-less machine does not fail.
+// StartNocoDB brings up a fresh NocoDB on the bundled SQLite store. It is a thin
+// wrapper over StartNocoDBOn(t, SQLite).
 func StartNocoDB(t *testing.T) *NocoDB {
+	t.Helper()
+	return StartNocoDBOn(t, SQLite)
+}
+
+// StartNocoDBOn brings up a fresh NocoDB on the given backend, waits for it to be
+// ready, and bootstraps a super-admin, an API token, and an empty base. For the
+// external SQL backends it first starts the DB container on a shared network and
+// points NocoDB at it via NC_DB. It skips the test when Docker is unavailable.
+func StartNocoDBOn(t *testing.T, backend Backend) *NocoDB {
 	t.Helper()
 	requireDocker(t)
 
 	ctx := context.Background()
+
 	req := testcontainers.ContainerRequest{
 		Image:        NocoDBImage,
 		ExposedPorts: []string{"8080/tcp"},
@@ -57,11 +87,25 @@ func StartNocoDB(t *testing.T) *NocoDB {
 			WithPort("8080/tcp").
 			WithStartupTimeout(180 * time.Second),
 	}
+
+	// External SQL backends: a shared network + a DB container reached by alias.
+	if backend != SQLite {
+		net, err := network.New(ctx)
+		require.NoError(t, err, "create network")
+		t.Cleanup(func() { _ = net.Remove(ctx) })
+
+		alias := string(backend)
+		startDB(t, ctx, backend, net.Name, alias)
+
+		req.Networks = []string{net.Name}
+		req.Env = map[string]string{"NC_DB": ncDBURL(backend, alias)}
+	}
+
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
 	})
-	require.NoError(t, err, "start NocoDB container")
+	require.NoError(t, err, "start NocoDB container (%s)", backend)
 	t.Cleanup(func() { _ = container.Terminate(ctx) })
 
 	host, err := container.Host(ctx)
@@ -75,6 +119,58 @@ func StartNocoDB(t *testing.T) *NocoDB {
 	}
 	n.bootstrap(t)
 	return n
+}
+
+// startDB starts the external SQL database for a backend on the shared network,
+// reachable by the given alias, and waits for it to accept connections.
+func startDB(t *testing.T, ctx context.Context, backend Backend, networkName, alias string) {
+	t.Helper()
+
+	var req testcontainers.ContainerRequest
+	switch backend {
+	case MySQL:
+		req = testcontainers.ContainerRequest{
+			Image:        mySQLImage,
+			ExposedPorts: []string{"3306/tcp"},
+			Env:          map[string]string{"MYSQL_ROOT_PASSWORD": dbPassword, "MYSQL_DATABASE": "nocodb"},
+			WaitingFor: wait.ForLog("ready for connections").
+				WithOccurrence(2).
+				WithStartupTimeout(180 * time.Second),
+		}
+	case Postgres:
+		req = testcontainers.ContainerRequest{
+			Image:        postgresImage,
+			ExposedPorts: []string{"5432/tcp"},
+			Env:          map[string]string{"POSTGRES_PASSWORD": dbPassword, "POSTGRES_DB": "nocodb"},
+			WaitingFor: wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(180 * time.Second),
+		}
+	default:
+		t.Fatalf("startDB: unsupported backend %q", backend)
+	}
+	req.Networks = []string{networkName}
+	req.NetworkAliases = map[string][]string{networkName: {alias}}
+
+	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err, "start %s container", backend)
+	t.Cleanup(func() { _ = c.Terminate(ctx) })
+}
+
+// ncDBURL builds the NC_DB connection string NocoDB uses to reach the external
+// database by its network alias.
+func ncDBURL(backend Backend, alias string) string {
+	switch backend {
+	case MySQL:
+		return fmt.Sprintf("mysql2://%s:3306?u=root&p=%s&d=nocodb", alias, dbPassword)
+	case Postgres:
+		return fmt.Sprintf("pg://%s:5432?u=postgres&p=%s&d=nocodb", alias, dbPassword)
+	default:
+		return ""
+	}
 }
 
 // bootstrap performs the version-specific auth dance, discovered against the

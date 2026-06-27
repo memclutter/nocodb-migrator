@@ -33,33 +33,14 @@ func NewMigrationsStorage(client *api.Client) *MigrationsStorage {
 	}
 }
 
-// EnsureMigrationsTable creates the Migrations table if it doesn't exist
-func (s *MigrationsStorage) EnsureMigrationsTable() error {
-	// Check if table exists
-	table, err := s.client.GetTableByName(s.tableName)
-	if err == nil {
-		// Table exists
-		s.tableID = table.ID
-		return nil
-	}
-
-	// Table doesn't exist, create it
-	fields := []api.FieldCreate{
-		{
-			Title:    "Timestamp",
-			Type:     "Number",
-			Required: true,
-		},
-		{
-			Title:    "Name",
-			Type:     "SingleLineText",
-			Required: true,
-		},
-		{
-			Title:    "AppliedAt",
-			Type:     "DateTime",
-			Required: true,
-		},
+// migrationsSelectFields returns the SingleSelect fields of the Migrations table.
+// They are created via separate field-create calls rather than inline in the
+// table-create request: a single bulk create does not materialize the select
+// choices into the column on external SQL backends, so NocoDB emits a value-less
+// enum (e.g. `Direction` enum) that MySQL rejects with a syntax error. Adding the
+// fields after the table exists produces a proper enum('up','down') instead.
+func migrationsSelectFields() []api.FieldCreate {
+	return []api.FieldCreate{
 		{
 			Title:    "Direction",
 			Type:     "SingleSelect",
@@ -83,18 +64,53 @@ func (s *MigrationsStorage) EnsureMigrationsTable() error {
 			},
 		},
 	}
+}
 
-	req := &api.TableCreate{
-		Title:  s.tableName,
-		Fields: fields,
+// EnsureMigrationsTable creates the Migrations table if it doesn't exist. The
+// SingleSelect fields are always added through separate field-create calls (see
+// migrationsSelectFields), and any that are missing on an existing table are
+// added, so a partially-created table heals on the next run.
+func (s *MigrationsStorage) EnsureMigrationsTable() error {
+	// Table already exists: make sure its select fields are present.
+	if table, err := s.client.GetTableByName(s.tableName); err == nil {
+		s.tableID = table.ID
+		return s.ensureSelectFields(table)
 	}
 
-	table, err = s.client.CreateTable(req)
+	// Create the table with only the non-select fields, then add the
+	// SingleSelect fields separately (see migrationsSelectFields).
+	baseFields := []api.FieldCreate{
+		{Title: "Timestamp", Type: "Number", Required: true},
+		{Title: "Name", Type: "SingleLineText", Required: true},
+		{Title: "AppliedAt", Type: "DateTime", Required: true},
+	}
+
+	table, err := s.client.CreateTable(&api.TableCreate{Title: s.tableName, Fields: baseFields})
 	if err != nil {
 		return fmt.Errorf("failed to create Migrations table: %w", err)
 	}
-
 	s.tableID = table.ID
+
+	return s.ensureSelectFields(table)
+}
+
+// ensureSelectFields adds any of the Migrations table's SingleSelect fields that
+// are not already present on the given table.
+func (s *MigrationsStorage) ensureSelectFields(table *api.Table) error {
+	existing := make(map[string]bool, len(table.Fields))
+	for _, f := range table.Fields {
+		existing[f.Title] = true
+	}
+
+	for _, fc := range migrationsSelectFields() {
+		if existing[fc.Title] {
+			continue
+		}
+		fc := fc
+		if _, err := s.client.CreateField(table.ID, &fc); err != nil {
+			return fmt.Errorf("failed to add %s field to Migrations table: %w", fc.Title, err)
+		}
+	}
 	return nil
 }
 
