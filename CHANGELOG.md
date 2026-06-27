@@ -9,6 +9,16 @@ release.
 
 ## [Unreleased]
 
+### Added
+
+- Unit test suite over the NocoDB API client, the `Migrations` storage, and the
+  migration executor, driven by an in-process mock NocoDB (`internal/testutil`)
+  so it needs no live instance.
+- GitHub Actions CI (`lint-unit`): gofmt check, `golangci-lint`, and unit tests
+  on every push and pull request, with a committed `.golangci.yml`.
+- A `pre-commit` configuration running gofmt, `golangci-lint`, and the unit tests
+  on every commit.
+
 ### Changed
 
 - Relicensed the project from GPL-3.0 to the MIT License.

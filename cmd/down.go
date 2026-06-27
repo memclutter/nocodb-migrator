@@ -5,9 +5,10 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/spf13/cobra"
+
 	"github.com/memclutter/nocodb-migrator/internal/migration"
 	"github.com/memclutter/nocodb-migrator/internal/storage"
-	"github.com/spf13/cobra"
 )
 
 // NewDownCommand creates the down command
