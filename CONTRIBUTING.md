@@ -12,6 +12,8 @@ a change merged.
   an in-process mock NocoDB).
 - Optional: [`golangci-lint`](https://golangci-lint.run/) and
   [`pre-commit`](https://pre-commit.com/) for the local checks below.
+- Optional: a running Docker daemon, to run the integration suite
+  (`go test -tags=integration ./...`).
 
 ## Getting started
 
@@ -48,13 +50,24 @@ CI runs the same `lint-unit` job (gofmt check, `golangci-lint run`,
 
 ### Tests
 
-The unit suite under `internal/` drives an **in-process mock NocoDB**
+The **unit suite** under `internal/` drives an in-process mock NocoDB
 (`internal/testutil`), so `go test ./...` is fast, deterministic, and needs no
 Docker or live instance. Add a test alongside any package you change; mock
 responses must stay faithful to the documented Meta API v3 shapes.
 
-> End-to-end integration tests against a real dockerized NocoDB are tracked
-> separately and run behind a build tag — see the project tasks.
+The **integration suite** runs the real `up`/`down` command path against a
+NocoDB container (via testcontainers-go) and is gated behind the `integration`
+build tag, so it never runs in the default `go test ./...`:
+
+```bash
+go test -tags=integration ./...   # requires a running Docker daemon
+```
+
+It starts `nocodb/nocodb` (pinned in `internal/testutil`), bootstraps a token
+and base, applies a migration, asserts the schema/data, and rolls back. Without
+Docker the suite skips cleanly. A failure against real NocoDB means the
+implementation diverges from the live Meta API v3 — treat it as a bug to fix,
+not a test to weaken.
 
 ### pre-commit hooks
 

@@ -18,6 +18,9 @@ release.
   on every push and pull request, with a committed `.golangci.yml`.
 - A `pre-commit` configuration running gofmt, `golangci-lint`, and the unit tests
   on every commit.
+- Integration tests that run the real `up`/`down` command path against a
+  dockerized NocoDB (testcontainers-go), gated behind the `integration` build tag
+  and run in a separate CI job.
 
 ### Changed
 
