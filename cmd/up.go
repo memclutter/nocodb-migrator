@@ -8,9 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/memclutter/nocodb-migrator/internal/migration"
 	"github.com/memclutter/nocodb-migrator/internal/storage"
-	"github.com/spf13/cobra"
 )
 
 // NewUpCommand creates the up command
@@ -100,15 +101,15 @@ func runUp(count int) error {
 		// Parse migration
 		mig, err := migration.ParseMigration(mf.Path)
 		if err != nil {
-			// Record error
-			storage.RecordMigration(mf.Timestamp, mf.Name, "up", "failed")
+			// Record error (best effort)
+			_ = storage.RecordMigration(mf.Timestamp, mf.Name, "up", "failed")
 			return fmt.Errorf("failed to parse migration %s: %w", mf.Name, err)
 		}
 
 		// Execute migration
 		if err := executor.ExecuteMigration(mig); err != nil {
-			// Record error
-			storage.RecordMigration(mf.Timestamp, mf.Name, "up", "failed")
+			// Record error (best effort)
+			_ = storage.RecordMigration(mf.Timestamp, mf.Name, "up", "failed")
 			return fmt.Errorf("failed to execute migration %s: %w", mf.Name, err)
 		}
 

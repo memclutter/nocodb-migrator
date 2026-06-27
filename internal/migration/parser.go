@@ -146,7 +146,7 @@ func ValidateOperation(op *Operation) error {
 		if op.Table == "" {
 			return fmt.Errorf("insert_row operation requires 'table' field")
 		}
-		if op.Data == nil || len(op.Data) == 0 {
+		if len(op.Data) == 0 {
 			return fmt.Errorf("insert_row operation requires 'data' field with at least one field")
 		}
 
@@ -154,7 +154,7 @@ func ValidateOperation(op *Operation) error {
 		if op.Table == "" {
 			return fmt.Errorf("delete_row operation requires 'table' field")
 		}
-		if op.RecordID == "" && (op.Where == nil || len(op.Where) == 0) {
+		if op.RecordID == "" && len(op.Where) == 0 {
 			return fmt.Errorf("delete_row operation requires either 'record_id' or 'where' field")
 		}
 	}

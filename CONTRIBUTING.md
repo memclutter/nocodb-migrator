@@ -7,8 +7,11 @@ a change merged.
 ## Prerequisites
 
 - Go 1.21 or newer (the module targets `go 1.21`).
-- A reachable NocoDB instance with an API token and a base id, for any change you
-  want to exercise end to end.
+- A reachable NocoDB instance with an API token and a base id is **only** needed
+  to exercise the binary end to end — the unit test suite needs none (it drives
+  an in-process mock NocoDB).
+- Optional: [`golangci-lint`](https://golangci-lint.run/) and
+  [`pre-commit`](https://pre-commit.com/) for the local checks below.
 
 ## Getting started
 
@@ -35,13 +38,36 @@ cp .env.example .env
 
 ```bash
 go build ./...        # compiles
-go test ./...         # runs unit tests (e.g. the migration parser)
+go test ./...         # runs the unit suite (api / storage / executor, mock NocoDB)
 gofmt -l .            # must print nothing (formatting)
-go vet ./...          # static checks
+golangci-lint run     # the linter the project standardizes on
 ```
 
-If you have [golangci-lint](https://golangci-lint.run/) installed, run it too —
-it is the linter the project standardizes on.
+CI runs the same `lint-unit` job (gofmt check, `golangci-lint run`,
+`go test ./...`) on every push and pull request.
+
+### Tests
+
+The unit suite under `internal/` drives an **in-process mock NocoDB**
+(`internal/testutil`), so `go test ./...` is fast, deterministic, and needs no
+Docker or live instance. Add a test alongside any package you change; mock
+responses must stay faithful to the documented Meta API v3 shapes.
+
+> End-to-end integration tests against a real dockerized NocoDB are tracked
+> separately and run behind a build tag — see the project tasks.
+
+### pre-commit hooks
+
+The repo ships a [`pre-commit`](https://pre-commit.com/) config that runs
+`gofmt`, `golangci-lint`, and the unit tests on every commit. Enable it once:
+
+```bash
+pre-commit install
+pre-commit run --all-files   # run the hooks across the whole tree
+```
+
+The hooks are `language: system`, so `go`, `gofmt`, and `golangci-lint` must be
+on your `PATH`.
 
 ## Code style
 

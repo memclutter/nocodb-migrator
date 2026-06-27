@@ -11,7 +11,7 @@ func TestParseMigration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	migrationContent := `{
   "operations": [
@@ -38,7 +38,7 @@ func TestParseMigration(t *testing.T) {
 	if _, err := tmpFile.WriteString(migrationContent); err != nil {
 		t.Fatalf("Failed to write migration content: %v", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Parse migration
 	migration, err := ParseMigration(tmpFile.Name())
@@ -66,9 +66,9 @@ func TestParseMigration(t *testing.T) {
 func TestValidateMigration(t *testing.T) {
 	tests := []struct {
 		name      string
-		migration  *Migration
-		wantError  bool
-		errorMsg   string
+		migration *Migration
+		wantError bool
+		errorMsg  string
 	}{
 		{
 			name: "valid migration",

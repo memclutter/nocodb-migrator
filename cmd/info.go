@@ -3,8 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/memclutter/nocodb-migrator/internal/storage"
 	"github.com/spf13/cobra"
+
+	"github.com/memclutter/nocodb-migrator/internal/storage"
 )
 
 // NewInfoCommand creates the info command

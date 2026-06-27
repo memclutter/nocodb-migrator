@@ -6,8 +6,9 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
-	"github.com/memclutter/nocodb-migrator/cmd"
 	"github.com/spf13/cobra"
+
+	"github.com/memclutter/nocodb-migrator/cmd"
 )
 
 var (
